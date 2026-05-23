@@ -41,8 +41,18 @@ type AuthState = {
   }) => Promise<void>;
   logout: () => Promise<void>;
   hydrate: () => void;
+  fetchProfile: () => Promise<void>;
   setProfile: (data: ProfileUpdate) => void;
 };
+
+function normalizeRole(value: string | null | undefined): Role | null {
+  if (!value) return null;
+  const role = value.toLowerCase();
+  if (role === "viewer" || role === "analyst" || role === "admin" || role === "owner") {
+    return role;
+  }
+  return null;
+}
 
 function persistSession(user: User, organization: Organization | null, role: Role | null) {
   sessionStorage.setItem("user", JSON.stringify(user));
@@ -59,14 +69,24 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setProfile: (data) => {
     set((state) => {
-      const user = (data.user as User) || state.user;
+      const user = data.user ?? state.user;
       const organization =
-        data.organization !== undefined ? (data.organization as Organization | null) : state.organization;
-      const role = (data.role as Role) || state.role;
+        data.organization !== undefined ? data.organization : state.organization;
+      const role =
+        data.role !== undefined && data.role !== null
+          ? normalizeRole(data.role)
+          : state.role;
       if (user) persistSession(user, organization, role);
       if (organization?.id) setOrganizationId(organization.id);
       return { user, organization, role };
     });
+  },
+
+  fetchProfile: async () => {
+    const res = await apiFetch<MeResponse>("/api/v1/auth/me");
+    if (res.success) {
+      useAuthStore.getState().setProfile(res.data);
+    }
   },
 
   hydrate: () => {
@@ -74,7 +94,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const token = sessionStorage.getItem("access_token");
     const user = sessionStorage.getItem("user");
     const org = sessionStorage.getItem("organization");
-    const role = sessionStorage.getItem("role") as Role | null;
+    const role = normalizeRole(sessionStorage.getItem("role"));
     if (token && user) {
       set({
         isAuthenticated: true,
@@ -84,6 +104,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       setAccessToken(token);
       if (org) setOrganizationId(JSON.parse(org).id);
+      void useAuthStore.getState().fetchProfile();
     }
   },
 
@@ -102,11 +123,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (!res.success) throw new Error(res.error?.message || "Login failed");
       setAccessToken(res.data.access_token);
       setOrganizationId(res.data.organization?.id || null);
-      persistSession(res.data.user, res.data.organization, res.data.role);
+      persistSession(res.data.user, res.data.organization, normalizeRole(res.data.role));
       set({
         user: res.data.user,
         organization: res.data.organization,
-        role: res.data.role,
+        role: normalizeRole(res.data.role),
         isAuthenticated: true,
         isLoading: false,
       });
@@ -131,11 +152,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (!res.success) throw new Error(res.error?.message || "Signup failed");
       setAccessToken(res.data.access_token);
       setOrganizationId(res.data.organization.id);
-      persistSession(res.data.user, res.data.organization, res.data.role || "owner");
+      persistSession(res.data.user, res.data.organization, normalizeRole(res.data.role) || "owner");
       set({
         user: res.data.user,
         organization: res.data.organization,
-        role: res.data.role || "owner",
+        role: normalizeRole(res.data.role) || "owner",
         isAuthenticated: true,
         isLoading: false,
       });

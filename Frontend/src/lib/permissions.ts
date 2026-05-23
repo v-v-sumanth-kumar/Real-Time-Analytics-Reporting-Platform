@@ -8,6 +8,12 @@ const ROLE_RANK: Record<Role, number> = {
 };
 
 export function hasMinRole(userRole: Role | null | undefined, required: Role): boolean {
-  if (!userRole) return false;
+  // While role is loading (e.g. existing session before /me returns), show viewer routes
+  if (!userRole) return required === "viewer";
   return ROLE_RANK[userRole] >= ROLE_RANK[required];
+}
+
+export function roleLabel(role: Role | null | undefined): string {
+  if (!role) return "Loading…";
+  return role;
 }
