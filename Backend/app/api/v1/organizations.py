@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.deps import (
     get_current_organization,
     get_current_user,
@@ -73,7 +74,8 @@ async def invite_user(
         body.role_enum(),
         user.id,
     )
-    info["invite_link"] = f"/accept-invite?token={token}"
+    settings = get_settings()
+    info["invite_link"] = f"{settings.frontend_url.rstrip('/')}/accept-invite?token={token}"
     return success_response(info, correlation_id=getattr(request.state, "correlation_id", None))
 
 

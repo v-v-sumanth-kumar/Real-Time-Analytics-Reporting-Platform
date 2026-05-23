@@ -26,6 +26,13 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: "UserResponse"
     organization: "OrganizationResponse | None" = None
+    role: str | None = None
+
+
+class MeResponse(BaseModel):
+    user: UserResponse
+    organization: OrganizationResponse | None = None
+    role: str | None = None
 
 
 class UserResponse(ORMBase):
@@ -53,4 +60,5 @@ class MemberResponse(ORMBase):
     full_name: str | None = None
 
 
+MeResponse.model_rebuild()
 AuthResponse.model_rebuild()

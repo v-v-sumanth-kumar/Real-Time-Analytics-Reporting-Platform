@@ -60,6 +60,7 @@ class AuthService:
                 access_token=access,
                 user=self._user_response(user),
                 organization=self._org_response(org),
+                role=self.member_role_label(int(Role.OWNER)),
             ),
             refresh_token_str,
         )
@@ -73,6 +74,11 @@ class AuthService:
 
         orgs = await self.org_repo.list_user_organizations(user.id)
         org = orgs[0] if orgs else None
+        role: str | None = None
+        if org:
+            member = await self.org_repo.get_member(org.id, user.id)
+            if member:
+                role = self.member_role_label(member.role)
         access = create_access_token(user.id, org_id=org.id if org else None)
         refresh_str = create_refresh_token(user.id)
         await self._store_refresh(user.id, refresh_str)
@@ -82,6 +88,7 @@ class AuthService:
                 access_token=access,
                 user=self._user_response(user),
                 organization=self._org_response(org) if org else None,
+                role=role,
             ),
             refresh_str,
         )
@@ -110,6 +117,11 @@ class AuthService:
 
         orgs = await self.org_repo.list_user_organizations(user.id)
         org = orgs[0] if orgs else None
+        role: str | None = None
+        if org:
+            member = await self.org_repo.get_member(org.id, user.id)
+            if member:
+                role = self.member_role_label(member.role)
         access = create_access_token(user.id, org_id=org.id if org else None)
         new_refresh = create_refresh_token(user.id)
         await self._store_refresh(user.id, new_refresh)
@@ -119,8 +131,37 @@ class AuthService:
                 access_token=access,
                 user=self._user_response(user),
                 organization=self._org_response(org) if org else None,
+                role=role,
             ),
             new_refresh,
+        )
+
+    async def get_me(self, user_id: UUID, org_id: UUID | None) -> "MeResponse":
+        from app.schemas.common import MeResponse, OrganizationResponse, UserResponse
+
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise NotFoundError("User not found")
+        org = None
+        role = None
+        if org_id:
+            org_model = await self.org_repo.get_by_id(org_id)
+            if org_model:
+                org = OrganizationResponse.model_validate(org_model)
+                member = await self.org_repo.get_member(org_id, user_id)
+                if member:
+                    role = self.member_role_label(member.role)
+        else:
+            orgs = await self.org_repo.list_user_organizations(user_id)
+            if orgs:
+                org = OrganizationResponse.model_validate(orgs[0])
+                member = await self.org_repo.get_member(orgs[0].id, user_id)
+                if member:
+                    role = self.member_role_label(member.role)
+        return MeResponse(
+            user=UserResponse.model_validate(user),
+            organization=org,
+            role=role,
         )
 
     async def logout(self, refresh_token: str | None) -> None:

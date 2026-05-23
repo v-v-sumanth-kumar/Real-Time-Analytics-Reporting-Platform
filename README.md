@@ -151,6 +151,18 @@ Header: `X-Organization-ID: <uuid>` (optional if embedded in token)
 - Metrics `/api/v1/dashboards/widgets/{id}/metrics`
 - Public `/api/v1/dashboards/public/{share_token}`
 
+### Alerts (JWT, Analyst+ to manage)
+- CRUD `/api/v1/alerts`
+- Mute/unmute, history `/api/v1/alerts/{id}/history`
+- In-app notifications `/api/v1/notifications`
+
+### Events stream (JWT, Viewer+)
+- `GET /api/v1/events/stream` — recent events for live viewer
+
+### Public dashboard
+- `GET /api/v1/dashboards/public/{share_token}`
+- `GET /api/v1/dashboards/public/{share_token}/widgets/{id}/metrics`
+
 ### WebSocket
 
 ```

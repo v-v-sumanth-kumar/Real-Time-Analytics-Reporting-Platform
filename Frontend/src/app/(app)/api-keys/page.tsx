@@ -20,6 +20,7 @@ type ApiKey = {
 export default function ApiKeysPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
+  const [rateLimit, setRateLimit] = useState(10000);
   const [newKey, setNewKey] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -31,7 +32,7 @@ export default function ApiKeysPage() {
     mutationFn: () =>
       apiFetch<ApiKey & { key: string }>("/api/v1/api-keys", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, rate_limit_rpm: rateLimit }),
       }),
     onSuccess: (res) => {
       if (res.success && "key" in res.data) {
@@ -39,6 +40,23 @@ export default function ApiKeysPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
       setName("");
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/v1/api-keys/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
+  });
+
+  const rotateMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<ApiKey & { key: string }>(`/api/v1/api-keys/${id}/rotate`, { method: "POST" }),
+    onSuccess: (res) => {
+      if (res.success && "key" in res.data) {
+        setNewKey((res.data as ApiKey & { key: string }).key);
+      }
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
   });
 
@@ -53,10 +71,18 @@ export default function ApiKeysPage() {
         <CardHeader>
           <CardTitle className="text-base">Create API key</CardTitle>
         </CardHeader>
-        <CardContent className="flex gap-4">
-          <div className="flex-1">
+        <CardContent className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[200px]">
             <Label>Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Production ingest" />
+          </div>
+          <div className="w-40">
+            <Label>Rate limit (req/min)</Label>
+            <Input
+              type="number"
+              value={rateLimit}
+              onChange={(e) => setRateLimit(Number(e.target.value))}
+            />
           </div>
           <Button className="self-end" onClick={() => createMutation.mutate()} disabled={!name}>
             Create
@@ -76,12 +102,20 @@ export default function ApiKeysPage() {
         <div className="space-y-4">
           {keys.map((k) => (
             <Card key={k.id}>
-              <CardContent className="flex items-center justify-between py-4">
+              <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
                 <div>
                   <p className="font-medium">{k.name}</p>
                   <p className="text-sm text-muted-foreground">
                     ak_{k.key_prefix}... · {k.rate_limit_rpm} req/min
                   </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => rotateMutation.mutate(k.id)}>
+                    Rotate
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => revokeMutation.mutate(k.id)}>
+                    Revoke
+                  </Button>
                 </div>
               </CardContent>
             </Card>

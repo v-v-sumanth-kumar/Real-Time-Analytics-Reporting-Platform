@@ -40,6 +40,26 @@ class ApiKeyService:
             raise NotFoundError("API key not found")
         await self.repo.soft_delete(key)
 
+    async def rotate(
+        self, organization_id: UUID, key_id: UUID, data: ApiKeyCreate | None = None
+    ) -> ApiKeyCreatedResponse:
+        old = await self.repo.get_by_id(key_id)
+        if not old or old.organization_id != organization_id:
+            raise NotFoundError("API key not found")
+        name = data.name if data else old.name
+        rate_limit = data.rate_limit_rpm if data else old.rate_limit_rpm
+        await self.repo.soft_delete(old)
+        full_key, prefix, key_hash = generate_api_key()
+        api_key = await self.repo.create(
+            organization_id=organization_id,
+            name=name,
+            key_prefix=prefix,
+            key_hash=key_hash,
+            rate_limit_rpm=rate_limit,
+        )
+        resp = ApiKeyResponse.model_validate(api_key)
+        return ApiKeyCreatedResponse(**resp.model_dump(), key=full_key)
+
     async def validate_key(self, api_key_header: str):
         if not api_key_header.startswith("ak_"):
             raise NotFoundError("Invalid API key")

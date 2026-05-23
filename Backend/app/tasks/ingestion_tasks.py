@@ -112,7 +112,23 @@ async def _process_csv_queue() -> int:
                 await session.commit()
                 await redis_client.publish(
                     f"org:{org_id}:events",
-                    json.dumps({"type": "event.ingested", "count": count}),
+                    json.dumps({
+                        "type": "event.ingested",
+                        "count": count,
+                        "events": [
+                            {
+                                "event_name": p["event_name"],
+                                "occurred_at": p["occurred_at"],
+                                "properties": p.get("properties", {}),
+                                "source": "csv",
+                            }
+                            for p in payloads[:50]
+                        ],
+                    }),
+                )
+                await redis_client.publish(
+                    f"org:{org_id}:dashboard",
+                    json.dumps({"type": "dashboard.refresh"}),
                 )
             else:
                 count = 0
@@ -130,8 +146,31 @@ def process_csv_queue() -> dict:
 
 @celery_app.task(name="app.tasks.ingestion_tasks.cleanup_expired_invitations")
 def cleanup_expired_invitations() -> dict:
-    # TODO: implement invitation cleanup in repository
-    return {"deleted": 0}
+    async def _cleanup() -> int:
+        from datetime import datetime, timezone
+        from sqlalchemy import delete
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+        from app.core.config import get_settings
+        from app.models.invitation import Invitation
+
+        settings = get_settings()
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            async with session_factory() as session:
+                now = datetime.now(timezone.utc)
+                stmt = delete(Invitation).where(
+                    Invitation.accepted_at.is_(None),
+                    Invitation.expires_at < now,
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount or 0
+        finally:
+            await engine.dispose()
+
+    deleted = _run_async(_cleanup())
+    return {"deleted": deleted}
 
 
 # Periodic drain — Celery Beat can call every few seconds

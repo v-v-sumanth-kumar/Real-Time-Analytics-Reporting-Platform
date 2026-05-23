@@ -6,14 +6,50 @@ from app.core.deps import (
     get_org_from_api_key,
     require_role,
 )
+from app.db.session import get_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
 from app.core.permissions import Role
 from app.models.api_key import ApiKey
 from app.models.organization import OrganizationMember
-from app.schemas.event import EventBatchCreate, EventCreate, EventIngestResponse
+from app.schemas.event import EventBatchCreate, EventCreate, EventIngestResponse, EventResponse
 from app.services.ingestion_service import IngestionService
-from app.utils.response import success_response
+from app.repositories.event_repository import EventRepository
+from app.utils.pagination import PaginationParams
+from app.utils.response import PaginationMeta, success_response
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+
+@router.get("/stream")
+async def list_recent_events(
+    request: Request,
+    params: PaginationParams = Depends(),
+    member: OrganizationMember = Depends(require_role(Role.VIEWER)),
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    repo = EventRepository(session)
+    result = await repo.list_by_org(member.organization_id, params)
+    meta = PaginationMeta(
+        page=result.page,
+        page_size=result.page_size,
+        total=result.total,
+        total_pages=result.total_pages,
+    )
+    items = [
+        EventResponse(
+            id=e.id,
+            event_name=e.event_name,
+            occurred_at=e.occurred_at,
+            received_at=e.received_at,
+            properties=e.properties,
+            user_id=e.user_id,
+            session_id=e.session_id,
+            source=e.source,
+        ).model_dump()
+        for e in result.items
+    ]
+    return success_response(items, meta=meta, correlation_id=getattr(request.state, "correlation_id", None))
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)

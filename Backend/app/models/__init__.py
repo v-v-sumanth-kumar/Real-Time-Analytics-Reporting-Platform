@@ -1,3 +1,4 @@
+from app.models.alert import AlertIncident, AlertRule, InAppNotification
 from app.models.api_key import ApiKey
 from app.models.dashboard import Dashboard
 from app.models.event import Event
@@ -17,4 +18,7 @@ __all__ = [
     "Widget",
     "Invitation",
     "RefreshToken",
+    "AlertRule",
+    "AlertIncident",
+    "InAppNotification",
 ]

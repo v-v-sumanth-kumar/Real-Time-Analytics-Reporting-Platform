@@ -9,7 +9,7 @@ celery_app = Celery(
     "analytics",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.ingestion_tasks"],
+    include=["app.tasks.ingestion_tasks", "app.tasks.alert_tasks"],
 )
 
 celery_app.conf.update(
@@ -31,5 +31,9 @@ celery_app.conf.beat_schedule = {
     "cleanup-expired-invitations": {
         "task": "app.tasks.ingestion_tasks.cleanup_expired_invitations",
         "schedule": crontab(hour=2, minute=0),
+    },
+    "evaluate-alerts": {
+        "task": "app.tasks.alert_tasks.evaluate_alerts",
+        "schedule": 60.0,
     },
 }

@@ -72,6 +72,7 @@ class DashboardResponse(ORMBase):
     is_public: bool
     refresh_interval_sec: int
     widgets: list[WidgetResponse] = []
+    share_url: str | None = None
     created_at: datetime
 
 

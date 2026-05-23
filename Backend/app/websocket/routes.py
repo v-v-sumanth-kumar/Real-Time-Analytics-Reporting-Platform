@@ -15,18 +15,25 @@ async def _redis_listener(org_id: str, local_manager: ConnectionManager) -> None
     settings = get_settings()
     client = aioredis.from_url(settings.redis_url, decode_responses=True)
     pubsub = client.pubsub()
-    await pubsub.subscribe(f"org:{org_id}:events")
+    await pubsub.subscribe(f"org:{org_id}:events", f"org:{org_id}:dashboard")
     try:
         async for message in pubsub.listen():
             if message["type"] != "message":
                 continue
+            channel = message["channel"]
             data = json.loads(message["data"])
-            await local_manager.broadcast(
-                org_channel(org_id),
-                {"type": data.get("type", "event.ingested"), "payload": data},
-            )
+            if channel.endswith(":dashboard"):
+                await local_manager.broadcast(
+                    org_channel(org_id),
+                    {"type": data.get("type", "dashboard.refresh"), "payload": data},
+                )
+            else:
+                await local_manager.broadcast(
+                    org_channel(org_id),
+                    {"type": data.get("type", "event.ingested"), "payload": data},
+                )
     finally:
-        await pubsub.unsubscribe(f"org:{org_id}:events")
+        await pubsub.unsubscribe(f"org:{org_id}:events", f"org:{org_id}:dashboard")
         await client.close()
 
 
@@ -54,8 +61,10 @@ async def websocket_endpoint(
     channel = org_channel(resolved_org)
     await manager.connect(channel, websocket)
 
+    dash_channel = None
     if dashboard_id:
-        await manager.connect(dashboard_channel(dashboard_id), websocket)
+        dash_channel = dashboard_channel(dashboard_id)
+        await manager.connect(dash_channel, websocket)
 
     listener_task = asyncio.create_task(_redis_listener(resolved_org, manager))
 
@@ -66,11 +75,12 @@ async def websocket_endpoint(
                 await websocket.send_json({"type": "pong"})
             elif data.startswith("subscribe:dashboard:"):
                 dash_id = data.split(":")[-1]
-                await manager.connect(dashboard_channel(dash_id), websocket)
+                dash_channel = dashboard_channel(dash_id)
+                await manager.connect(dash_channel, websocket)
     except WebSocketDisconnect:
         pass
     finally:
         listener_task.cancel()
         await manager.disconnect(channel, websocket)
-        if dashboard_id:
-            await manager.disconnect(dashboard_channel(dashboard_id), websocket)
+        if dash_channel:
+            await manager.disconnect(dash_channel, websocket)

@@ -3,12 +3,14 @@ from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from app.core.cookies import REFRESH_COOKIE, refresh_cookie_params
 from app.core.deps import (
     get_auth_service,
+    get_current_member,
+    get_current_org_id,
     get_current_user,
     get_refresh_token,
 )
 from app.models.user import User
 from app.schemas.auth import LoginRequest, SignupRequest
-from app.schemas.common import AuthResponse, MessageResponse, UserResponse
+from app.schemas.common import AuthResponse, MeResponse, MessageResponse, UserResponse
 from app.services.auth_service import AuthService
 from app.utils.response import success_response
 
@@ -100,8 +102,11 @@ async def logout(
 async def me(
     request: Request,
     user: User = Depends(get_current_user),
+    org_id=Depends(get_current_org_id),
+    service: AuthService = Depends(get_auth_service),
 ):
+    profile = await service.get_me(user.id, org_id)
     return success_response(
-        UserResponse.model_validate(user).model_dump(),
+        profile.model_dump(),
         correlation_id=getattr(request.state, "correlation_id", None),
     )

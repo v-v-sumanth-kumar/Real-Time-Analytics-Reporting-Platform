@@ -16,11 +16,13 @@ from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.repositories.organization_repository import OrganizationRepository
 from app.repositories.user_repository import UserRepository
+from app.services.alert_service import AlertService
 from app.services.api_key_service import ApiKeyService
 from app.services.auth_service import AuthService
 from app.services.dashboard_service import DashboardService
 from app.services.ingestion_service import IngestionService
 from app.services.invitation_service import InvitationService
+from app.services.notification_service import NotificationService
 
 security = HTTPBearer(auto_error=False)
 
@@ -64,6 +66,19 @@ async def get_api_key_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ApiKeyService:
     return ApiKeyService(session)
+
+
+async def get_alert_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+) -> AlertService:
+    return AlertService(session, redis)
+
+
+async def get_db_notification_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> NotificationService:
+    return NotificationService(session)
 
 
 async def get_current_user(
@@ -140,15 +155,19 @@ def require_role(min_role: Role):
 
 async def get_org_from_api_key(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ) -> ApiKey:
     if not x_api_key:
         raise UnauthorizedError("API key required")
     service = ApiKeyService(session)
     try:
-        return await service.validate_key(x_api_key)
+        key = await service.validate_key(x_api_key)
     except NotFoundError as e:
         raise UnauthorizedError("Invalid API key") from e
+    from app.utils.rate_limit import RateLimiter
+    await RateLimiter(redis).check_api_key_limit(str(key.id), key.rate_limit_rpm)
+    return key
 
 
 async def get_refresh_token(

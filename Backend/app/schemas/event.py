@@ -35,4 +35,8 @@ class EventResponse(BaseModel):
     id: UUID
     event_name: str
     occurred_at: datetime
+    received_at: datetime
     properties: dict[str, Any]
+    user_id: str | None = None
+    session_id: str | None = None
+    source: str

@@ -46,3 +46,17 @@ async def revoke_key(
     service: ApiKeyService = Depends(get_api_key_service),
 ):
     await service.revoke(member.organization_id, key_id)
+
+
+@router.post("/{key_id}/rotate", status_code=status.HTTP_201_CREATED)
+async def rotate_key(
+    key_id: UUID,
+    request: Request,
+    member: OrganizationMember = Depends(require_role(Role.ADMIN)),
+    service: ApiKeyService = Depends(get_api_key_service),
+):
+    key = await service.rotate(member.organization_id, key_id)
+    return success_response(
+        key.model_dump(),
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )

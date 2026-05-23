@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
 
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.models.widget import Widget
 from app.core.security import generate_share_token
@@ -26,6 +27,7 @@ from app.utils.widgets import filter_active_widgets
 class DashboardService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        self.settings = get_settings()
         self.dashboard_repo = DashboardRepository(session)
         self.widget_repo = WidgetRepository(session)
         self.event_repo = EventRepository(session)
@@ -43,6 +45,7 @@ class DashboardService:
         dashboard,
         *,
         widgets: Sequence[Widget] | None = None,
+        share_url: str | None = None,
     ) -> DashboardResponse:
         if widgets is not None:
             active = filter_active_widgets(widgets)
@@ -58,6 +61,7 @@ class DashboardService:
             is_public=dashboard.is_public,
             refresh_interval_sec=dashboard.refresh_interval_sec,
             widgets=widget_responses,
+            share_url=share_url,
             created_at=dashboard.created_at,
         )
 
@@ -99,13 +103,31 @@ class DashboardService:
             raise NotFoundError("Dashboard not found")
 
         updates = data.model_dump(exclude_unset=True)
-        if "is_public" in updates and updates["is_public"] and not dashboard.share_token_hash:
-            _, token_hash = generate_share_token()
-            dashboard.share_token_hash = token_hash
+        share_url: str | None = None
+        if "is_public" in updates:
+            if updates["is_public"] and not dashboard.share_token_hash:
+                raw_token, token_hash = generate_share_token()
+                dashboard.share_token_hash = token_hash
+                share_url = f"{self.settings.frontend_url.rstrip('/')}/share/{raw_token}"
+            elif not updates["is_public"]:
+                dashboard.share_token_hash = None
         for key, value in updates.items():
             setattr(dashboard, key, value)
         await self.session.flush()
-        return self._dashboard_response(dashboard)
+        return self._dashboard_response(dashboard, share_url=share_url)
+
+    async def regenerate_share_link(
+        self, organization_id: UUID, dashboard_id: UUID
+    ) -> DashboardResponse:
+        dashboard = await self.dashboard_repo.get_with_widgets(dashboard_id)
+        if not dashboard or dashboard.organization_id != organization_id:
+            raise NotFoundError("Dashboard not found")
+        raw_token, token_hash = generate_share_token()
+        dashboard.share_token_hash = token_hash
+        dashboard.is_public = True
+        await self.session.flush()
+        share_url = f"{self.settings.frontend_url.rstrip('/')}/share/{raw_token}"
+        return self._dashboard_response(dashboard, share_url=share_url)
 
     async def delete(self, organization_id: UUID, dashboard_id: UUID) -> None:
         dashboard = await self.dashboard_repo.get_by_id(dashboard_id)
@@ -165,9 +187,22 @@ class DashboardService:
         await self.widget_repo.soft_delete(widget)
 
     async def get_widget_metrics(
-        self, organization_id: UUID, widget_id: UUID
+        self,
+        organization_id: UUID | None,
+        widget_id: UUID,
+        *,
+        share_token: str | None = None,
     ) -> WidgetMetricsResponse:
-        widget = await self.widget_repo.get_by_id_for_org(widget_id, organization_id)
+        if share_token:
+            import hashlib
+            token_hash = hashlib.sha256(share_token.encode()).hexdigest()
+            dashboard = await self.dashboard_repo.get_by_share_token_hash(token_hash)
+            if not dashboard:
+                raise NotFoundError("Dashboard not found or not shared")
+            widget = await self.widget_repo.get_by_id_for_org(widget_id, dashboard.organization_id)
+            organization_id = dashboard.organization_id
+        else:
+            widget = await self.widget_repo.get_by_id_for_org(widget_id, organization_id)
         if not widget:
             raise NotFoundError("Widget not found")
 

@@ -53,6 +53,20 @@ async def create_dashboard(
     )
 
 
+@router.post("/{dashboard_id}/share")
+async def regenerate_share_link(
+    dashboard_id: UUID,
+    request: Request,
+    member: OrganizationMember = Depends(require_role(Role.ANALYST)),
+    service: DashboardService = Depends(get_dashboard_service),
+):
+    dashboard = await service.regenerate_share_link(member.organization_id, dashboard_id)
+    return success_response(
+        dashboard.model_dump(),
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+
+
 @router.get("/public/{share_token}")
 async def get_public_dashboard(
     share_token: str,
@@ -62,6 +76,24 @@ async def get_public_dashboard(
     dashboard = await service.get_public(share_token)
     return success_response(
         dashboard.model_dump(),
+        correlation_id=getattr(request.state, "correlation_id", None),
+    )
+
+
+@router.get("/public/{share_token}/widgets/{widget_id}/metrics")
+async def public_widget_metrics(
+    share_token: str,
+    widget_id: UUID,
+    request: Request,
+    service: DashboardService = Depends(get_dashboard_service),
+):
+    metrics = await service.get_widget_metrics(
+        widget_id=widget_id,
+        organization_id=None,
+        share_token=share_token,
+    )
+    return success_response(
+        metrics.model_dump(),
         correlation_id=getattr(request.state, "correlation_id", None),
     )
 

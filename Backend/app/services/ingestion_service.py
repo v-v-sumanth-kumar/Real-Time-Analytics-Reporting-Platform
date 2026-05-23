@@ -105,9 +105,27 @@ class IngestionService:
         events = self.payloads_to_models(payloads)
         count = await self.event_repo.bulk_create(events)
         org_id = payloads[0]["organization_id"]
+        stream_events = [
+            {
+                "event_name": p["event_name"],
+                "occurred_at": p["occurred_at"],
+                "properties": p.get("properties", {}),
+                "user_id": p.get("user_id"),
+                "source": p.get("source", "api"),
+            }
+            for p in payloads[:50]
+        ]
         await self.redis.publish(
             f"org:{org_id}:events",
-            json.dumps({"type": "event.ingested", "count": count}),
+            json.dumps({
+                "type": "event.ingested",
+                "count": count,
+                "events": stream_events,
+            }),
+        )
+        await self.redis.publish(
+            f"org:{org_id}:dashboard",
+            json.dumps({"type": "dashboard.refresh"}),
         )
         return count
 

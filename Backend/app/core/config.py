@@ -33,6 +33,12 @@ class Settings(BaseSettings):
 
     ingest_rate_limit_per_minute: int = 10000
 
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_from: str | None = None
+
+    frontend_url: str = "http://localhost:3000"
+
     cookie_secure: bool = False
     cookie_samesite: str = "lax"  # lax | none | strict (use none + secure for cross-origin SPA)
     cookie_domain: str | None = None
