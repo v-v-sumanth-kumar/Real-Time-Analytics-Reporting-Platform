@@ -27,6 +27,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+origins = os.environ.get("CORS_ORIGINS", "").split(",")
+
 
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(
