@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore, type MeResponse } from "@/stores/auth-store";
 import { apiFetch } from "@/lib/api";
 import { useEffect } from "react";
 
@@ -15,13 +15,11 @@ export function AuthHydrator() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    apiFetch<{ user: unknown; organization: unknown; role: string }>("/api/v1/auth/me").then(
-      (res) => {
-        if (res.success) {
-          setProfile(res.data);
-        }
+    apiFetch<MeResponse>("/api/v1/auth/me").then((res) => {
+      if (res.success) {
+        setProfile(res.data);
       }
-    );
+    });
   }, [isAuthenticated, setProfile]);
 
   return null;

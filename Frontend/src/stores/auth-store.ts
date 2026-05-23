@@ -2,16 +2,28 @@ import { create } from "zustand";
 import { apiFetch, setAccessToken, setOrganizationId } from "@/lib/api";
 import { Role } from "@/lib/permissions";
 
-type User = {
+export type User = {
   id: string;
   email: string;
   full_name: string;
 };
 
-type Organization = {
+export type Organization = {
   id: string;
   name: string;
   slug: string;
+};
+
+export type ProfileUpdate = {
+  user?: User;
+  organization?: Organization | null;
+  role?: string | null;
+};
+
+export type MeResponse = {
+  user: User;
+  organization: Organization | null;
+  role: string | null;
 };
 
 type AuthState = {
@@ -29,11 +41,7 @@ type AuthState = {
   }) => Promise<void>;
   logout: () => Promise<void>;
   hydrate: () => void;
-  setProfile: (data: {
-    user?: User;
-    organization?: Organization | null;
-    role?: string | null;
-  }) => void;
+  setProfile: (data: ProfileUpdate) => void;
 };
 
 function persistSession(user: User, organization: Organization | null, role: Role | null) {
