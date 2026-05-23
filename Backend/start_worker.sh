@@ -1,11 +1,14 @@
 #!/bin/bash
 set -e
 
-# Start Celery worker in background
-celery -A app.celery_app worker --loglevel=info --concurrency=2 &
+# Celery app lives in app.tasks.celery_app (not app.celery_app)
+CELERY_APP="app.tasks.celery_app"
 
-# Start Celery Beat in background (redbeat stores schedule in Redis)
-celery -A app.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler &
+# Start Celery worker in background
+celery -A "$CELERY_APP" worker --loglevel=info --concurrency=2 &
+
+# Beat drains ingest:events queue every 5s (see celery_app.conf beat_schedule)
+celery -A "$CELERY_APP" beat --loglevel=info &
 
 # Keep a tiny HTTP server alive so Render doesn't kill the service
 # This just responds 200 OK to health checks on $PORT
