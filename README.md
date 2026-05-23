@@ -190,7 +190,8 @@ curl -X POST http://localhost:8000/api/v1/events \
 ## Production Checklist
 
 - [ ] Rotate `JWT_SECRET_KEY` and use secrets manager
-- [ ] Set `COOKIE_SECURE=true` behind HTTPS
+- [ ] Set `CORS_ORIGINS` to your frontend URL (e.g. Vercel)
+- [ ] For cross-origin SPA: `COOKIE_SECURE=true` and `COOKIE_SAMESITE=none` (refresh cookie)
 - [ ] Partition `events` table by month (see model TODO)
 - [ ] Add email provider for invitations
 - [ ] Configure OpenTelemetry / structured log aggregation

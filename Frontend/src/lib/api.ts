@@ -43,6 +43,21 @@ export function getOrganizationId(): string | null {
   return null;
 }
 
+export function clearAuthSession() {
+  setAccessToken(null);
+  setOrganizationId(null);
+  if (typeof window !== "undefined") {
+    sessionStorage.clear();
+  }
+}
+
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+  if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/signup")) {
+    window.location.href = "/login";
+  }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
     method: "POST",
@@ -88,6 +103,11 @@ export async function apiFetch<T>(
         credentials: "include",
       });
     }
+  }
+
+  if (res.status === 401) {
+    clearAuthSession();
+    redirectToLogin();
   }
 
   return res.json();

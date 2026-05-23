@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 
-from app.core.config import get_settings
+from app.core.cookies import REFRESH_COOKIE, refresh_cookie_params
 from app.core.deps import (
     get_auth_service,
     get_current_user,
@@ -14,29 +14,21 @@ from app.utils.response import success_response
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-REFRESH_COOKIE = "refresh_token"
-
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
-    settings = get_settings()
-    response.set_cookie(
-        key=REFRESH_COOKIE,
-        value=token,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        max_age=settings.refresh_token_expire_days * 86400,
-        domain=settings.cookie_domain or None,
-        path="/",
-    )
+    params = refresh_cookie_params()
+    response.set_cookie(value=token, **params)
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    settings = get_settings()
+    params = refresh_cookie_params()
     response.delete_cookie(
-        key=REFRESH_COOKIE,
-        path="/",
-        domain=settings.cookie_domain or None,
+        key=params["key"],
+        path=params["path"],
+        domain=params["domain"],
+        secure=params["secure"],
+        httponly=params["httponly"],
+        samesite=params["samesite"],
     )
 
 

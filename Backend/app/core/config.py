@@ -34,7 +34,18 @@ class Settings(BaseSettings):
     ingest_rate_limit_per_minute: int = 10000
 
     cookie_secure: bool = False
+    cookie_samesite: str = "lax"  # lax | none | strict (use none + secure for cross-origin SPA)
     cookie_domain: str | None = None
+
+    @field_validator("cookie_samesite", mode="before")
+    @classmethod
+    def normalize_cookie_samesite(cls, v: str | None) -> str:
+        if v is None or not str(v).strip():
+            return "lax"
+        normalized = str(v).strip().lower()
+        if normalized not in ("lax", "none", "strict"):
+            raise ValueError("cookie_samesite must be lax, none, or strict")
+        return normalized
 
     @field_validator("cors_origins", mode="before")
     @classmethod
