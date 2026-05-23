@@ -8,14 +8,35 @@ from app.models.dashboard import Dashboard
 from app.models.widget import Widget
 from app.repositories.base import BaseRepository
 from app.utils.pagination import PaginatedResult, PaginationParams
+from app.utils.widgets import filter_active_widgets
 
 
 def _dashboard_load_options():
-    """Eager-load non-deleted widgets; avoids async lazy-load (MissingGreenlet)."""
+    """Eager-load widgets; _prune_deleted_widgets_on_dashboards + service filter as fallback."""
     return (
         selectinload(Dashboard.widgets),
         with_loader_criteria(Widget, Widget.deleted_at.is_(None)),
     )
+
+
+def _prune_deleted_widgets_on_dashboards(dashboards: list[Dashboard]) -> None:
+    """
+    Replace loaded widget collections with active-only lists without lazy IO.
+
+    Uses set_committed_value so we do not trigger async relationship loaders or
+    assign a plain list to an instrumented collection (MissingGreenlet risk).
+    """
+    from sqlalchemy.orm import attributes
+
+    for dashboard in dashboards:
+        state = attributes.instance_state(dashboard)
+        if "widgets" in state.unloaded:
+            continue
+        attributes.set_committed_value(
+            dashboard,
+            "widgets",
+            filter_active_widgets(dashboard.widgets),
+        )
 
 
 class DashboardRepository(BaseRepository[Dashboard]):
@@ -37,7 +58,10 @@ class DashboardRepository(BaseRepository[Dashboard]):
             .options(*_dashboard_load_options())
         )
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        dashboard = result.scalar_one_or_none()
+        if dashboard is not None:
+            _prune_deleted_widgets_on_dashboards([dashboard])
+        return dashboard
 
     async def list_by_org(
         self, organization_id: UUID, params: PaginationParams
@@ -56,6 +80,7 @@ class DashboardRepository(BaseRepository[Dashboard]):
         )
         result = await self.session.execute(stmt)
         items = list(result.scalars().all())
+        _prune_deleted_widgets_on_dashboards(items)
         return PaginatedResult(
             items=items, total=total, page=params.page, page_size=params.page_size
         )
@@ -71,7 +96,10 @@ class DashboardRepository(BaseRepository[Dashboard]):
             .options(*_dashboard_load_options())
         )
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        dashboard = result.scalar_one_or_none()
+        if dashboard is not None:
+            _prune_deleted_widgets_on_dashboards([dashboard])
+        return dashboard
 
 
 class WidgetRepository(BaseRepository[Widget]):

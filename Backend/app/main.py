@@ -31,6 +31,7 @@ app = FastAPI(
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
+    # settings.cors_origins_list strips and drops empty entries (safe when CORS_ORIGINS is unset or "")
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],

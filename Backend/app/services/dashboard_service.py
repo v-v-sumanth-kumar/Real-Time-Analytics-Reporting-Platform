@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     WidgetUpdate,
 )
 from app.utils.pagination import PaginatedResult, PaginationParams
+from app.utils.widgets import filter_active_widgets
 
 
 class DashboardService:
@@ -34,7 +35,8 @@ class DashboardService:
         state = attributes.instance_state(dashboard)
         if "widgets" in state.unloaded:
             return []
-        return [w for w in dashboard.widgets if w.deleted_at is None]
+        # Fallback if with_loader_criteria did not apply (SQLAlchemy edge cases).
+        return filter_active_widgets(dashboard.widgets)
 
     def _dashboard_response(
         self,
@@ -42,7 +44,10 @@ class DashboardService:
         *,
         widgets: Sequence[Widget] | None = None,
     ) -> DashboardResponse:
-        active = list(widgets) if widgets is not None else self._loaded_widgets(dashboard)
+        if widgets is not None:
+            active = filter_active_widgets(widgets)
+        else:
+            active = self._loaded_widgets(dashboard)
         widget_responses = [WidgetResponse.model_validate(w) for w in active]
         return DashboardResponse(
             id=dashboard.id,

@@ -38,14 +38,20 @@ class Settings(BaseSettings):
 
     @field_validator("cors_origins", mode="before")
     @classmethod
-    def parse_cors(cls, v: str | List[str]) -> str:
+    def parse_cors(cls, v: str | List[str] | None) -> str:
+        if v is None:
+            return ""
         if isinstance(v, list):
-            return ",".join(v)
-        return v
+            return ",".join(str(item).strip() for item in v if str(item).strip())
+        text = str(v).strip()
+        return text
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        """Parsed CORS origins; never returns [''] for empty/unset env (unlike raw split)."""
+        if not self.cors_origins.strip():
+            return []
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache
