@@ -1,0 +1,142 @@
+import asyncio
+import json
+from datetime import datetime, timezone
+
+import redis
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.core.config import get_settings
+from app.repositories.event_repository import EventRepository
+from app.services.ingestion_service import IngestionService
+from app.tasks.celery_app import celery_app
+
+settings = get_settings()
+
+BATCH_SIZE = 500
+
+
+def _run_async(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+async def _process_event_queue(batch_size: int = BATCH_SIZE) -> int:
+    r = redis.from_url(settings.redis_url, decode_responses=True)
+    payloads = []
+    for _ in range(batch_size):
+        raw = r.rpop(IngestionService.QUEUE_KEY)
+        if not raw:
+            break
+        payloads.append(json.loads(raw))
+
+    if not payloads:
+        return 0
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        service = IngestionService(session, redis.from_url(settings.redis_url, decode_responses=True))
+        count = await service.persist_batch(payloads)
+        await session.commit()
+
+    await engine.dispose()
+    return count
+
+
+@celery_app.task(name="app.tasks.ingestion_tasks.process_ingest_queue")
+def process_ingest_queue() -> dict:
+    count = _run_async(_process_event_queue())
+    return {"processed": count}
+
+
+async def _process_csv_queue() -> int:
+    r = redis.from_url(settings.redis_url, decode_responses=True)
+    raw = r.rpop("ingest:csv")
+    if not raw:
+        return 0
+
+    job = json.loads(raw)
+    rows = IngestionService.parse_csv(job["content"])
+    from uuid import UUID
+
+    org_id = UUID(job["organization_id"])
+    ingest_id = job.get("ingest_id")
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        redis_async = __import__("redis.asyncio", fromlist=["asyncio"]).from_url(
+            settings.redis_url, decode_responses=True
+        )
+        service = IngestionService(session, redis_async)
+        payloads = []
+        for row in rows:
+            from app.schemas.event import EventCreate
+            from datetime import datetime as dt
+
+            occurred = row.get("occurred_at")
+            if isinstance(occurred, str):
+                try:
+                    occurred_dt = dt.fromisoformat(occurred.replace("Z", "+00:00"))
+                except ValueError:
+                    occurred_dt = datetime.now(timezone.utc)
+            else:
+                occurred_dt = datetime.now(timezone.utc)
+
+            event = EventCreate(
+                event_name=row["event_name"],
+                occurred_at=occurred_dt,
+                properties=row.get("properties", {}),
+                user_id=row.get("user_id"),
+                session_id=row.get("session_id"),
+            )
+            p = service.normalize_event(org_id, event, source="csv")
+            p["ingest_id"] = ingest_id
+            payloads.append(p)
+
+        if payloads:
+            from app.models.event import Event
+
+            events = IngestionService.payloads_to_models(payloads)
+            repo = EventRepository(session)
+            count = await repo.bulk_create(events)
+            await session.commit()
+            await redis_async.publish(
+                f"org:{org_id}:events",
+                json.dumps({"type": "event.ingested", "count": count}),
+            )
+        else:
+            count = 0
+
+    await engine.dispose()
+    return count
+
+
+@celery_app.task(name="app.tasks.ingestion_tasks.process_csv_queue")
+def process_csv_queue() -> dict:
+    count = _run_async(_process_csv_queue())
+    return {"processed": count}
+
+
+@celery_app.task(name="app.tasks.ingestion_tasks.cleanup_expired_invitations")
+def cleanup_expired_invitations() -> dict:
+    # TODO: implement invitation cleanup in repository
+    return {"deleted": 0}
+
+
+# Periodic drain — Celery Beat can call every few seconds
+@celery_app.task(name="app.tasks.ingestion_tasks.drain_ingest_queue")
+def drain_ingest_queue() -> dict:
+    total = 0
+    for _ in range(10):
+        count = _run_async(_process_event_queue())
+        total += count
+        if count == 0:
+            break
+    csv_count = _run_async(_process_csv_queue())
+    return {"events_processed": total, "csv_processed": csv_count}
