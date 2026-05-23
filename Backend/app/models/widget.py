@@ -23,4 +23,4 @@ class Widget(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     position: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     refresh_interval_sec: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
 
-    dashboard = relationship("Dashboard", back_populates="widgets")
+    dashboard = relationship("Dashboard", back_populates="widgets", lazy="raise")

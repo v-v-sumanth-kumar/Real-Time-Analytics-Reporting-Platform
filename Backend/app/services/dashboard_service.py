@@ -1,8 +1,11 @@
+from typing import Sequence
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import NotFoundError
+from app.models.widget import Widget
 from app.core.security import generate_share_token
 from app.repositories.dashboard_repository import DashboardRepository, WidgetRepository
 from app.repositories.event_repository import EventRepository
@@ -26,12 +29,21 @@ class DashboardService:
         self.widget_repo = WidgetRepository(session)
         self.event_repo = EventRepository(session)
 
-    def _dashboard_response(self, dashboard) -> DashboardResponse:
-        widgets = [
-            WidgetResponse.model_validate(w)
-            for w in dashboard.widgets
-            if w.deleted_at is None
-        ]
+    def _loaded_widgets(self, dashboard) -> list[Widget]:
+        """Read widgets only when eager-loaded; never trigger async lazy load."""
+        state = attributes.instance_state(dashboard)
+        if "widgets" in state.unloaded:
+            return []
+        return [w for w in dashboard.widgets if w.deleted_at is None]
+
+    def _dashboard_response(
+        self,
+        dashboard,
+        *,
+        widgets: Sequence[Widget] | None = None,
+    ) -> DashboardResponse:
+        active = list(widgets) if widgets is not None else self._loaded_widgets(dashboard)
+        widget_responses = [WidgetResponse.model_validate(w) for w in active]
         return DashboardResponse(
             id=dashboard.id,
             organization_id=dashboard.organization_id,
@@ -40,7 +52,7 @@ class DashboardService:
             layout=dashboard.layout,
             is_public=dashboard.is_public,
             refresh_interval_sec=dashboard.refresh_interval_sec,
-            widgets=widgets,
+            widgets=widget_responses,
             created_at=dashboard.created_at,
         )
 
@@ -55,8 +67,7 @@ class DashboardService:
             refresh_interval_sec=data.refresh_interval_sec,
             created_by=user_id,
         )
-        dashboard.widgets = []
-        return self._dashboard_response(dashboard)
+        return self._dashboard_response(dashboard, widgets=[])
 
     async def list(
         self, organization_id: UUID, params: PaginationParams

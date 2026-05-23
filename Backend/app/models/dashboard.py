@@ -24,4 +24,8 @@ class Dashboard(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     refresh_interval_sec: Mapped[int] = mapped_column(default=30, nullable=False)
 
     organization = relationship("Organization", back_populates="dashboards")
-    widgets = relationship("Widget", back_populates="dashboard", lazy="selectin")
+    widgets = relationship(
+        "Widget",
+        back_populates="dashboard",
+        lazy="raise",
+    )

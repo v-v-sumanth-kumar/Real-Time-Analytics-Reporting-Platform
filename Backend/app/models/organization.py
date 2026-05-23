@@ -34,4 +34,4 @@ class OrganizationMember(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMi
     role: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     organization = relationship("Organization", back_populates="members")
-    user = relationship("User", back_populates="memberships")
+    user = relationship("User", back_populates="memberships", lazy="selectin")
