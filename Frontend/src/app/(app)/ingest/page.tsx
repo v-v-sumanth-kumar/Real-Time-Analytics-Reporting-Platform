@@ -1,15 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { apiUploadFile } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+type IngestResult = {
+  accepted: number;
+  ingest_id: string | null;
+};
+
 export default function IngestPage() {
   const [apiKey, setApiKey] = useState("");
-  const [result, setResult] = useState("");
+  const [apiKeyResult, setApiKeyResult] = useState("");
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvResult, setCsvResult] = useState("");
+  const [csvError, setCsvError] = useState("");
+  const [csvLoading, setCsvLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function sendTestEvent() {
+    setApiKeyResult("");
     const res = await fetch(`${API_URL}/api/v1/events`, {
       method: "POST",
       headers: {
@@ -22,38 +37,94 @@ export default function IngestPage() {
       }),
     });
     const json = await res.json();
-    setResult(JSON.stringify(json, null, 2));
+    setApiKeyResult(JSON.stringify(json, null, 2));
+  }
+
+  async function uploadCsv() {
+    if (!csvFile) return;
+    setCsvLoading(true);
+    setCsvError("");
+    setCsvResult("");
+    try {
+      const res = await apiUploadFile<IngestResult>("/api/v1/events/upload", csvFile);
+      if (!res.success) {
+        setCsvError(res.error?.message || "Upload failed");
+        return;
+      }
+      setCsvResult(JSON.stringify(res, null, 2));
+      setCsvFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (e) {
+      setCsvError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setCsvLoading(false);
+    }
   }
 
   return (
     <div className="p-8">
       <h1 className="mb-2 text-3xl font-bold">Event Ingestion</h1>
       <p className="mb-8 text-muted-foreground">
-        Send events via API key. CSV upload available from the API for authenticated users.
+        Send events with an API key or upload a CSV while signed in (Analyst role or higher).
       </p>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Test ingest</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <input
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            placeholder="X-API-Key"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-          <button
-            onClick={sendTestEvent}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-          >
-            Send test event
-          </button>
-          {result && (
-            <pre className="overflow-auto rounded bg-muted p-4 text-xs">{result}</pre>
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Test ingest (API key)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="api-key">X-API-Key</Label>
+              <Input
+                id="api-key"
+                placeholder="ak_..."
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+            </div>
+            <Button onClick={sendTestEvent} disabled={!apiKey}>
+              Send test event
+            </Button>
+            {apiKeyResult && (
+              <pre className="overflow-auto rounded bg-muted p-4 text-xs">{apiKeyResult}</pre>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Upload CSV</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Uses your session (JWT). Required columns:{" "}
+              <code className="text-xs">event_name</code> or{" "}
+              <code className="text-xs">event</code>. Optional:{" "}
+              <code className="text-xs">occurred_at</code>,{" "}
+              <code className="text-xs">user_id</code>,{" "}
+              <code className="text-xs">session_id</code>, plus any property columns.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="csv-file">CSV file</Label>
+              <Input
+                id="csv-file"
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            <Button onClick={uploadCsv} disabled={!csvFile || csvLoading}>
+              {csvLoading ? "Uploading..." : "Upload CSV"}
+            </Button>
+            {csvError && <p className="text-sm text-red-500">{csvError}</p>}
+            {csvResult && (
+              <pre className="overflow-auto rounded bg-muted p-4 text-xs">{csvResult}</pre>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="mt-6">
         <CardHeader>
@@ -62,7 +133,7 @@ export default function IngestPage() {
         <CardContent className="space-y-2 font-mono text-sm text-muted-foreground">
           <p>POST {API_URL}/api/v1/events</p>
           <p>POST {API_URL}/api/v1/events/batch</p>
-          <p>POST {API_URL}/api/v1/events/upload (multipart, JWT)</p>
+          <p>POST {API_URL}/api/v1/events/upload</p>
         </CardContent>
       </Card>
     </div>

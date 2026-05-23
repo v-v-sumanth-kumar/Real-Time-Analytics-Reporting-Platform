@@ -74,18 +74,20 @@ async function refreshAccessToken(): Promise<string | null> {
   return null;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<ApiResponse<T>> {
-  const token = getAccessToken();
-  const orgId = getOrganizationId();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
-  };
+function authHeaders(token: string | null, orgId: string | null): Record<string, string> {
+  const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (orgId) headers["X-Organization-ID"] = orgId;
+  return headers;
+}
+
+async function fetchWithAuthRetry(path: string, options: RequestInit): Promise<Response> {
+  const token = getAccessToken();
+  const orgId = getOrganizationId();
+  const headers = {
+    ...authHeaders(token, orgId),
+    ...(options.headers as Record<string, string>),
+  };
 
   let res = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -96,10 +98,9 @@ export async function apiFetch<T>(
   if (res.status === 401 && token) {
     const newToken = await refreshAccessToken();
     if (newToken) {
-      headers["Authorization"] = `Bearer ${newToken}`;
       res = await fetch(`${API_URL}${path}`, {
         ...options,
-        headers,
+        headers: { ...headers, Authorization: `Bearer ${newToken}` },
         credentials: "include",
       });
     }
@@ -110,5 +111,31 @@ export async function apiFetch<T>(
     redirectToLogin();
   }
 
+  return res;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<ApiResponse<T>> {
+  const res = await fetchWithAuthRetry(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers as Record<string, string>),
+    },
+  });
+  return res.json();
+}
+
+/** Multipart upload (e.g. CSV). Do not set Content-Type; the browser adds the boundary. */
+export async function apiUploadFile<T>(
+  path: string,
+  file: File,
+  fieldName = "file"
+): Promise<ApiResponse<T>> {
+  const form = new FormData();
+  form.append(fieldName, file);
+  const res = await fetchWithAuthRetry(path, { method: "POST", body: form });
   return res.json();
 }
