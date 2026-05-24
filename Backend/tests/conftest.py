@@ -40,13 +40,21 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
-@pytest.fixture(scope="session")
-def integration_db_ready() -> bool:
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def integration_runtime() -> AsyncGenerator[None, None]:
+    """One event loop + fresh async engine for all tests (avoids asyncpg loop errors in CI)."""
     if not INTEGRATION_ENABLED:
-        return False
+        yield
+        return
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
     from app.core.config import get_settings
+    import app.db.session as db_session
 
     get_settings.cache_clear()
+    settings = get_settings()
+
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND_ROOT,
@@ -58,7 +66,25 @@ def integration_db_ready() -> bool:
             f"alembic upgrade failed:\n{result.stderr or result.stdout}",
             returncode=1,
         )
-    return True
+
+    try:
+        await db_session.engine.dispose()
+    except Exception:
+        pass
+
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    db_session.engine = engine
+    db_session.AsyncSessionLocal = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    yield
+
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -72,6 +98,7 @@ async def fake_redis():
 
 @pytest_asyncio.fixture
 async def client(fake_redis) -> AsyncGenerator[AsyncClient, None]:
+    import app.core.deps as deps_mod
     from app.core.config import get_settings
     from app.core.deps import get_redis
     from app.main import app
@@ -81,6 +108,8 @@ async def client(fake_redis) -> AsyncGenerator[AsyncClient, None]:
     async def _redis_override():
         return fake_redis
 
+    # Health calls get_redis() directly (not via Depends) — wire the test double globally.
+    deps_mod._redis_client = fake_redis
     app.dependency_overrides[get_redis] = _redis_override
 
     transport = ASGITransport(app=app)
@@ -88,6 +117,7 @@ async def client(fake_redis) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
+    deps_mod._redis_client = None
     get_settings.cache_clear()
 
 

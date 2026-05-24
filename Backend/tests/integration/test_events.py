@@ -12,7 +12,6 @@ pytestmark = pytest.mark.integration
 @pytest.mark.skipif(not INTEGRATION_ENABLED, reason="Set TEST_DATABASE_URL to run integration tests")
 async def test_ingest_event_enqueues_to_redis(
     client: AsyncClient,
-    integration_db_ready: bool,
     registered_user: dict,
     fake_redis,
 ) -> None:
@@ -45,7 +44,6 @@ async def test_ingest_event_enqueues_to_redis(
 @pytest.mark.skipif(not INTEGRATION_ENABLED, reason="Set TEST_DATABASE_URL to run integration tests")
 async def test_ingest_without_api_key_returns_401(
     client: AsyncClient,
-    integration_db_ready: bool,
 ) -> None:
     response = await client.post(
         "/api/v1/events",

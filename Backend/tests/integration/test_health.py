@@ -9,7 +9,6 @@ pytestmark = pytest.mark.integration
 @pytest.mark.skipif(not INTEGRATION_ENABLED, reason="Set TEST_DATABASE_URL to run integration tests")
 async def test_health_reports_ok(
     client: AsyncClient,
-    integration_db_ready: bool,
 ) -> None:
     response = await client.get("/api/v1/health")
     assert response.status_code == 200

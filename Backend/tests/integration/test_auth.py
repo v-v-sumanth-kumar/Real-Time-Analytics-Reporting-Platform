@@ -9,7 +9,6 @@ pytestmark = pytest.mark.integration
 @pytest.mark.skipif(not INTEGRATION_ENABLED, reason="Set TEST_DATABASE_URL to run integration tests")
 async def test_signup_login_and_me(
     client: AsyncClient,
-    integration_db_ready: bool,
     registered_user: dict,
 ) -> None:
     headers = auth_headers(registered_user)
@@ -31,7 +30,6 @@ async def test_signup_login_and_me(
 @pytest.mark.skipif(not INTEGRATION_ENABLED, reason="Set TEST_DATABASE_URL to run integration tests")
 async def test_login_invalid_password_returns_401(
     client: AsyncClient,
-    integration_db_ready: bool,
     registered_user: dict,
 ) -> None:
     response = await client.post(
