@@ -68,17 +68,19 @@ class IngestionService:
 
     async def enqueue_csv(
         self, organization_id: UUID, file_content: bytes
-    ) -> UUID:
+    ) -> tuple[UUID, int]:
+        content = file_content.decode("utf-8")
+        row_count = len(self.parse_csv(content))
         ingest_id = uuid.uuid4()
         await self.redis.lpush(
             "ingest:csv",
             json.dumps({
                 "organization_id": str(organization_id),
                 "ingest_id": str(ingest_id),
-                "content": file_content.decode("utf-8"),
+                "content": content,
             }),
         )
-        return ingest_id
+        return ingest_id, row_count
 
     @staticmethod
     def payloads_to_models(payloads: list[dict]) -> list[Event]:

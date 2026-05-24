@@ -88,8 +88,8 @@ async def upload_csv(
     service: IngestionService = Depends(get_ingestion_service),
 ):
     content = await file.read()
-    ingest_id = await service.enqueue_csv(member.organization_id, content)
+    ingest_id, accepted = await service.enqueue_csv(member.organization_id, content)
     return success_response(
-        EventIngestResponse(accepted=0, ingest_id=ingest_id).model_dump(),
+        EventIngestResponse(accepted=accepted, ingest_id=ingest_id).model_dump(),
         correlation_id=getattr(request.state, "correlation_id", None),
     )
