@@ -40,21 +40,15 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def integration_runtime() -> AsyncGenerator[None, None]:
-    """One event loop + fresh async engine for all tests (avoids asyncpg loop errors in CI)."""
+@pytest.fixture(scope="session", autouse=True)
+def integration_db_migrated() -> None:
+    """Apply Alembic migrations once before integration tests (sync — no asyncio loop)."""
     if not INTEGRATION_ENABLED:
-        yield
         return
 
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
     from app.core.config import get_settings
-    import app.db.session as db_session
 
     get_settings.cache_clear()
-    settings = get_settings()
-
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND_ROOT,
@@ -67,12 +61,28 @@ async def integration_runtime() -> AsyncGenerator[None, None]:
             returncode=1,
         )
 
+
+async def _bind_test_db_engine():
+    """Fresh engine on the active event loop (NullPool avoids cross-loop pooled connections)."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    import app.db.session as db_session
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    settings = get_settings()
+
     try:
         await db_session.engine.dispose()
     except Exception:
         pass
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_async_engine(
+        settings.database_url,
+        poolclass=NullPool,
+        echo=False,
+    )
     db_session.engine = engine
     db_session.AsyncSessionLocal = async_sessionmaker(
         engine,
@@ -81,10 +91,7 @@ async def integration_runtime() -> AsyncGenerator[None, None]:
         autocommit=False,
         autoflush=False,
     )
-
-    yield
-
-    await engine.dispose()
+    return engine
 
 
 @pytest_asyncio.fixture
@@ -103,12 +110,11 @@ async def client(fake_redis) -> AsyncGenerator[AsyncClient, None]:
     from app.core.deps import get_redis
     from app.main import app
 
-    get_settings.cache_clear()
+    engine = await _bind_test_db_engine()
 
     async def _redis_override():
         return fake_redis
 
-    # Health calls get_redis() directly (not via Depends) — wire the test double globally.
     deps_mod._redis_client = fake_redis
     app.dependency_overrides[get_redis] = _redis_override
 
@@ -119,6 +125,7 @@ async def client(fake_redis) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
     deps_mod._redis_client = None
     get_settings.cache_clear()
+    await engine.dispose()
 
 
 @pytest.fixture
