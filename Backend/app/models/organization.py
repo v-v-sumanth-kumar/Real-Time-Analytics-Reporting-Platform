@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,7 +22,13 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
 class OrganizationMember(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "organization_members"
     __table_args__ = (
-        UniqueConstraint("organization_id", "user_id", name="uq_org_user"),
+        Index(
+            "uq_org_user_active",
+            "organization_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(

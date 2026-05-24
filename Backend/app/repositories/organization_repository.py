@@ -43,6 +43,27 @@ class OrganizationRepository(BaseRepository[Organization]):
     async def add_member(
         self, organization_id: UUID, user_id: UUID, role: Role
     ) -> OrganizationMember:
+        stmt = (
+            select(OrganizationMember)
+            .where(
+                OrganizationMember.organization_id == organization_id,
+                OrganizationMember.user_id == user_id,
+            )
+            .order_by(OrganizationMember.deleted_at.nullsfirst())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        existing = result.scalars().first()
+        if existing:
+            if existing.deleted_at is None:
+                existing.role = int(role)
+                await self.session.flush()
+                return existing
+            existing.deleted_at = None
+            existing.role = int(role)
+            await self.session.flush()
+            return existing
+
         member = OrganizationMember(
             organization_id=organization_id,
             user_id=user_id,
@@ -55,24 +76,28 @@ class OrganizationRepository(BaseRepository[Organization]):
     async def get_member(
         self, organization_id: UUID, user_id: UUID
     ) -> OrganizationMember | None:
-        stmt = self._active(
+        stmt = (
             select(OrganizationMember)
             .where(
                 OrganizationMember.organization_id == organization_id,
                 OrganizationMember.user_id == user_id,
+                OrganizationMember.deleted_at.is_(None),
             )
             .options(selectinload(OrganizationMember.user))
+            .order_by(OrganizationMember.created_at.desc())
+            .limit(1)
         )
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def list_members(self, organization_id: UUID) -> list[OrganizationMember]:
         stmt = (
-            self._active(
-                select(OrganizationMember)
-                .where(OrganizationMember.organization_id == organization_id)
-                .options(selectinload(OrganizationMember.user))
+            select(OrganizationMember)
+            .where(
+                OrganizationMember.organization_id == organization_id,
+                OrganizationMember.deleted_at.is_(None),
             )
+            .options(selectinload(OrganizationMember.user))
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -82,7 +107,10 @@ class OrganizationRepository(BaseRepository[Organization]):
             self._active(
                 select(Organization)
                 .join(OrganizationMember)
-                .where(OrganizationMember.user_id == user_id)
+                .where(
+                    OrganizationMember.user_id == user_id,
+                    OrganizationMember.deleted_at.is_(None),
+                )
             )
         )
         result = await self.session.execute(stmt)
