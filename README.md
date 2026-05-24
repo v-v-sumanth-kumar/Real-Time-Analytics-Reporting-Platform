@@ -1,112 +1,180 @@
 # Real-Time Analytics & Reporting Platform
 
-Production-grade multi-tenant analytics SaaS with event ingestion, dashboards, and real-time updates.
+Production-grade multi-tenant analytics SaaS: event ingestion, customizable dashboards, threshold alerts, and real-time updates.
+
+## Live Demo
+
+| Service | URL |
+|---------|-----|
+| **Web app** | [https://real-time-analytics-reporting-platf.vercel.app](https://real-time-analytics-reporting-platf.vercel.app/login) |
+| **API** | [https://analytics-api-6xzy.onrender.com](https://analytics-api-6xzy.onrender.com) |
+| **API docs (Swagger)** | [https://analytics-api-6xzy.onrender.com/docs](https://analytics-api-6xzy.onrender.com/docs) |
+
+### Try it in ~3 minutes
+
+1. Open the [web app](https://real-time-analytics-reporting-platf.vercel.app/signup) and **sign up** (creates your user + organization).
+2. Go to **API Keys**, create a key, and copy it (shown once).
+3. Ingest an event (replace `ak_YOUR_KEY`):
+
+```bash
+curl -X POST https://analytics-api-6xzy.onrender.com/api/v1/events \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ak_YOUR_KEY" \
+  -d '{"event_name":"page_view","properties":{"page":"/home"}}'
+```
+
+4. Open **Dashboards** → create a dashboard → add a **line** or **KPI** widget for `page_view` → metrics appear after the ingest worker processes the queue (usually within a few seconds).
+5. Optional: open **Live Events** to see the stream update; **Alerts** to define a threshold rule.
+
+> **Note:** The API runs on Render’s free tier — the first request after idle can take 30–60s to wake up.
+
+---
 
 ## Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 14, React 18, TypeScript, TailwindCSS, Shadcn-style UI, Zustand, TanStack Query, Recharts |
-| Backend | FastAPI, Python 3.11+, SQLAlchemy 2.0 async, PostgreSQL, Alembic |
-| Async | Celery, Celery Beat, Redis |
-| Real-time | WebSockets, Redis Pub/Sub |
-| Auth | JWT access tokens + HTTP-only refresh cookies, bcrypt |
+| Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Zustand, TanStack Query, Recharts |
+| Backend | FastAPI, Python 3.11+, SQLAlchemy 2.0 (async), PostgreSQL, Alembic |
+| Async jobs | Celery + Redis (worker + Beat on Render) |
+| Real-time | WebSockets + Redis Pub/Sub |
+| Auth | JWT access token + HTTP-only refresh cookie, bcrypt |
+| Hosting | [Vercel](https://real-time-analytics-reporting-platf.vercel.app) (frontend), [Render](https://analytics-api-6xzy.onrender.com) (API, worker, Postgres, Redis) |
+
+---
 
 ## Architecture
 
 ```
 Routers → Services → Repositories → Models
-         ↘ Schemas (Pydantic I/O)
+         ↘ Schemas (Pydantic v2 I/O)
 ```
 
-- **Multi-tenancy**: Organization-scoped data with role hierarchy (Owner > Admin > Analyst > Viewer)
-- **Ingestion**: Validate → Redis queue → Celery worker → PostgreSQL
-- **Dashboards**: Widgets (line, bar, pie, KPI) with time-range queries
-- **WebSockets**: Live event notifications per organization
+- **Multi-tenancy** — Organization-scoped data; roles: Owner → Admin → Analyst → Viewer
+- **Ingestion** — Validate (Pydantic) → Redis queue → Celery worker → PostgreSQL → Redis pub/sub → WebSocket clients
+- **Dashboards** — Widgets (line, bar, pie, KPI) backed by saved queries and configurable time ranges
+- **Alerts** — Threshold rules evaluated on a schedule (Celery Beat); in-app + webhook notifications
 
-## Project Structure
+---
+
+## Project structure
 
 ```
-├── backend/
+├── Backend/
 │   ├── app/
-│   │   ├── api/v1/          # HTTP routers
-│   │   ├── core/            # Config, security, deps, permissions
-│   │   ├── db/              # SQLAlchemy base & session
-│   │   ├── models/          # ORM models
-│   │   ├── repositories/    # Data access
-│   │   ├── schemas/         # Pydantic v2
-│   │   ├── services/        # Business logic
-│   │   ├── tasks/           # Celery workers
-│   │   ├── websocket/       # WS manager & routes
-│   │   ├── middleware/      # Correlation IDs
-│   │   └── utils/           # Response wrapper, pagination, rate limits
-│   └── alembic/             # Migrations
-├── frontend/                # Next.js App Router
-└── docker-compose.yml
+│   │   ├── api/v1/       # HTTP routers
+│   │   ├── core/         # Config, security, deps, permissions
+│   │   ├── db/           # SQLAlchemy session
+│   │   ├── models/       # ORM models
+│   │   ├── repositories/ # Data access
+│   │   ├── schemas/      # Pydantic v2
+│   │   ├── services/     # Business logic
+│   │   ├── tasks/        # Celery workers & Beat schedule
+│   │   ├── websocket/    # WS manager & routes
+│   │   └── middleware/   # Correlation IDs
+│   └── alembic/          # Migrations
+└── Frontend/             # Next.js App Router
 ```
 
-## Quick Start (Docker)
+---
 
-### Prerequisites
+## Features implemented
 
-- Docker & Docker Compose
-- (Optional) Node 20+ and Python 3.11+ for local dev without Docker
+| Module | Highlights |
+|--------|------------|
+| **Auth & orgs** | Sign up/in, JWT + refresh cookie, invites, role-based API guards, org data isolation |
+| **Ingestion** | Single/batch events, CSV upload, API keys (rotate/revoke), per-org & per-key rate limits |
+| **Dashboards** | CRUD, widgets, metrics API, public share links, auto-refresh (30s / 1m / 5m) |
+| **Alerts** | Threshold rules, mute/snooze, incident history, in-app + Slack-compatible webhooks |
+| **Real-time** | WebSocket live updates, event stream viewer, reconnect on the client |
 
-### 1. Configure environment
+---
 
-```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
+## API overview
+
+Base URL (production): `https://analytics-api-6xzy.onrender.com`
+
+### Auth
+
+- `POST /api/v1/auth/signup` — Create user + organization
+- `POST /api/v1/auth/login` — Access token + refresh cookie
+- `POST /api/v1/auth/refresh` — Rotate tokens (cookie)
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+
+### Organizations
+
+- `GET /api/v1/organizations/current`
+- `GET /api/v1/organizations/members`
+- `POST /api/v1/organizations/invitations`
+- `POST /api/v1/organizations/invitations/accept`
+
+### Events (API key: `X-API-Key: ak_...`)
+
+- `POST /api/v1/events` — Single event (202)
+- `POST /api/v1/events/batch` — Up to 1000 events (202)
+- `POST /api/v1/events/upload` — CSV (JWT, Analyst+)
+- `GET /api/v1/events/stream` — Recent events (JWT, live viewer)
+
+### Dashboards (JWT: `Authorization: Bearer <token>`)
+
+Optional header: `X-Organization-ID: <uuid>`
+
+- CRUD `/api/v1/dashboards`
+- Widgets `/api/v1/dashboards/{id}/widgets`
+- Metrics `/api/v1/dashboards/widgets/{id}/metrics`
+- Public read `/api/v1/dashboards/public/{share_token}`
+
+### Alerts & notifications
+
+- CRUD `/api/v1/alerts`, mute/unmute, `/api/v1/alerts/{id}/history`
+- `/api/v1/notifications` — In-app notifications
+
+### WebSocket (production)
+
+```
+wss://analytics-api-6xzy.onrender.com/ws?token=<access_token>&org_id=<uuid>
 ```
 
-For Docker, update `backend/.env`:
+### Health
 
-```env
-DATABASE_URL=postgresql+asyncpg://analytics:analytics@postgres:5432/analytics
-REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=redis://redis:6379/1
-CELERY_RESULT_BACKEND=redis://redis:6379/2
-CORS_ORIGINS=http://localhost:3000
-JWT_SECRET_KEY=your-long-random-secret-here
-```
+- `GET /api/v1/health` — API, database, Redis, ingest queue depth
 
-### 2. Start services
+---
 
-```bash
-docker compose up --build
-```
+## Roles & permissions
 
-### 3. Run migrations
+| Action | Min role |
+|--------|----------|
+| View dashboards, events stream | Viewer |
+| Create widgets, CSV upload, manage alerts | Analyst |
+| API keys, invites | Admin |
+| Full org control | Owner |
 
-```bash
-docker compose exec api alembic upgrade head
-```
+---
 
-### 4. Access
+## Local development
 
-| Service | URL |
-|---------|-----|
-| API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| Frontend | http://localhost:3000 |
-
-## Local Development (without Docker)
+**Prerequisites:** Python 3.11+, Node 20+, PostgreSQL, Redis
 
 ### Backend
 
 ```bash
-cd backend
+cd Backend
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Start PostgreSQL and Redis locally, update DATABASE_URL / REDIS_URL
+# Edit DATABASE_URL, REDIS_URL, JWT_SECRET_KEY
 
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
+```
 
-# Separate terminals:
+Separate terminals:
+
+```bash
 celery -A app.tasks.celery_app worker --loglevel=info
 celery -A app.tasks.celery_app beat --loglevel=info
 ```
@@ -114,108 +182,61 @@ celery -A app.tasks.celery_app beat --loglevel=info
 ### Frontend
 
 ```bash
-cd frontend
+cd Frontend
 npm install
 cp .env.example .env.local
 npm run dev
 ```
 
-## API Overview
+Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8000/docs](http://localhost:8000/docs).
 
-### Auth
-- `POST /api/v1/auth/signup` — Create user + organization
-- `POST /api/v1/auth/login` — Returns access token, sets refresh cookie
-- `POST /api/v1/auth/refresh` — Rotate tokens (cookie)
-- `POST /api/v1/auth/logout`
-- `GET /api/v1/auth/me`
+---
 
-### Organizations
-- `GET /api/v1/organizations/current`
-- `GET /api/v1/organizations/members`
-- `POST /api/v1/organizations/invitations`
-- `POST /api/v1/organizations/invitations/accept`
+## Deployment
 
-### Events (API key)
-- `POST /api/v1/events` — Single event (202)
-- `POST /api/v1/events/batch` — Up to 1000 events (202)
-- `POST /api/v1/events/upload` — CSV (JWT, Analyst+)
+### Frontend (Vercel)
 
-Header: `X-API-Key: ak_...`
+- Root directory: `Frontend`
+- Environment variables:
+  - `NEXT_PUBLIC_API_URL=https://analytics-api-6xzy.onrender.com`
+  - `NEXT_PUBLIC_APP_URL=https://real-time-analytics-reporting-platf.vercel.app`
 
-### Dashboards (JWT)
-Header: `Authorization: Bearer <token>`  
-Header: `X-Organization-ID: <uuid>` (optional if embedded in token)
+### Backend (Render)
 
-- CRUD `/api/v1/dashboards`
-- Widgets `/api/v1/dashboards/{id}/widgets`
-- Metrics `/api/v1/dashboards/widgets/{id}/metrics`
-- Public `/api/v1/dashboards/public/{share_token}`
+- **Web service** — `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Background worker** — `Backend/start_worker.sh` (Celery worker + Beat)
+- **PostgreSQL** + **Redis** — linked via `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
 
-### Alerts (JWT, Analyst+ to manage)
-- CRUD `/api/v1/alerts`
-- Mute/unmute, history `/api/v1/alerts/{id}/history`
-- In-app notifications `/api/v1/notifications`
+Production backend env (important):
 
-### Events stream (JWT, Viewer+)
-- `GET /api/v1/events/stream` — recent events for live viewer
-
-### Public dashboard
-- `GET /api/v1/dashboards/public/{share_token}`
-- `GET /api/v1/dashboards/public/{share_token}/widgets/{id}/metrics`
-
-### WebSocket
-
-```
-ws://localhost:8000/ws?token=<access_token>&org_id=<uuid>
+```env
+FRONTEND_URL=https://real-time-analytics-reporting-platf.vercel.app
+CORS_ORIGINS=https://real-time-analytics-reporting-platf.vercel.app
+COOKIE_SECURE=true
+COOKIE_SAMESITE=none
+JWT_SECRET_KEY=<strong-secret>
 ```
 
-## Example: Ingest Events
+Run migrations on deploy: `alembic upgrade head`
 
-```bash
-curl -X POST http://localhost:8000/api/v1/events \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: ak_YOUR_KEY" \
-  -d '{"event_name":"page_view","properties":{"page":"/home"}}'
-```
+---
 
-## Roles & Permissions
-
-| Action | Min Role |
-|--------|----------|
-| View dashboards | Viewer |
-| Create widgets / CSV upload | Analyst |
-| API keys, invites, delete dashboards | Admin |
-| Full org control | Owner |
-
-## Environment Variables
+## Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | Async PostgreSQL URL (`postgresql+asyncpg://...`) |
-| `REDIS_URL` | Redis for cache, rate limits, pub/sub |
-| `CELERY_BROKER_URL` | Celery message broker |
-| `CELERY_RESULT_BACKEND` | Celery result store |
-| `JWT_SECRET_KEY` | Signing secret (32+ chars in production) |
-| `CORS_ORIGINS` | Comma-separated frontend origins |
+| `DATABASE_URL` | Async PostgreSQL (`postgresql+asyncpg://...`) |
+| `REDIS_URL` | Cache, rate limits, pub/sub |
+| `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Celery |
+| `JWT_SECRET_KEY` | Token signing (32+ chars in production) |
+| `CORS_ORIGINS` | Frontend origin(s), comma-separated |
+| `FRONTEND_URL` | Share & invite links |
 | `INGEST_RATE_LIMIT_PER_MINUTE` | Per-org ingest cap |
+| `COOKIE_SECURE` / `COOKIE_SAMESITE` | Cross-origin refresh cookie (Vercel + Render) |
 
-## Production Checklist
+See `Backend/.env.example` and `Frontend/.env.example` for the full list.
 
-- [ ] Rotate `JWT_SECRET_KEY` and use secrets manager
-- [ ] Set `CORS_ORIGINS` to your frontend URL (e.g. Vercel)
-- [ ] For cross-origin SPA: `COOKIE_SECURE=true` and `COOKIE_SAMESITE=none` (refresh cookie)
-- [ ] Partition `events` table by month (see model TODO)
-- [ ] Add email provider for invitations
-- [ ] Configure OpenTelemetry / structured log aggregation
-- [ ] Horizontal scaling: multiple API instances + Redis pub/sub (included)
-
-## TODO (Scalability)
-
-- Monthly partitions on `events` table
-- Materialized views for hot dashboard queries
-- Idempotency keys on ingest
-- Row-level security in PostgreSQL
-- Audit log for admin actions
+---
 
 ## License
 
