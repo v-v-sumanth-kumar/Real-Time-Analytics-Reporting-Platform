@@ -196,3 +196,26 @@ Run migrations on deploy: `alembic upgrade head`
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` | Cross-origin refresh cookie (Vercel + Render) |
 
 See `Backend/.env.example` and `Frontend/.env.example` for the full list.
+
+---
+
+## Tests
+
+Backend uses **pytest** + **httpx** (async API tests) + **fakeredis** (no real Redis needed for most tests).
+
+```bash
+cd Backend
+pip install -r requirements-dev.txt
+python -m pytest -v
+```
+
+**Unit tests** (permissions, CSV parsing) run with no database.
+
+**Integration tests** need PostgreSQL — set `TEST_DATABASE_URL`, then run the full suite:
+
+```bash
+set TEST_DATABASE_URL=postgresql+asyncpg://analytics:analytics@localhost:5432/analytics_test
+python -m pytest -v
+```
+
+CI runs integration tests on push via GitHub Actions (`.github/workflows/backend-tests.yml`).
