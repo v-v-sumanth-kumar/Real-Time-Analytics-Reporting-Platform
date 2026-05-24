@@ -24,9 +24,9 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.get("/stream")
 async def list_recent_events(
     request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     params: PaginationParams = Depends(),
     member: OrganizationMember = Depends(require_role(Role.VIEWER)),
-    session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     repo = EventRepository(session)
     result = await repo.list_by_org(member.organization_id, params)
