@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Analytics">
+  <rect width="180" height="180" rx="40" fill="#2563eb"/>
+  <path
+    d="M36 130V80M68 130V45M100 130V95M132 130V60M164 130V30"
+    stroke="#ffffff"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
