@@ -26,7 +26,7 @@ curl -X POST https://analytics-api-6xzy.onrender.com/api/v1/events \
 4. Open **Dashboards** → create a dashboard → add a **line** or **KPI** widget for `page_view` → metrics appear after the ingest worker processes the queue (usually within a few seconds).
 5. Optional: open **Live Events** to see the stream update; **Alerts** to define a threshold rule.
 
-> **Note:** The API runs on Render’s free tier — the first request after idle can take 30–60s to wake up.
+> **Hosted on free tiers (Vercel + Render).** Services spin down after a period of inactivity. The first visit after idle may take **up to a minute** while instances wake up—especially the API and background worker on Render. If a request times out, wait a moment and retry; subsequent requests are typically fast.
 
 ---
 
