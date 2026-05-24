@@ -153,45 +153,6 @@ wss://analytics-api-6xzy.onrender.com/ws?token=<access_token>&org_id=<uuid>
 
 ---
 
-## Local development
-
-**Prerequisites:** Python 3.11+, Node 20+, PostgreSQL, Redis
-
-### Backend
-
-```bash
-cd Backend
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit DATABASE_URL, REDIS_URL, JWT_SECRET_KEY
-
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
-```
-
-Separate terminals:
-
-```bash
-celery -A app.tasks.celery_app worker --loglevel=info
-celery -A app.tasks.celery_app beat --loglevel=info
-```
-
-### Frontend
-
-```bash
-cd Frontend
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000). API: [http://localhost:8000/docs](http://localhost:8000/docs).
-
----
-
 ## Deployment
 
 ### Frontend (Vercel)
@@ -235,9 +196,3 @@ Run migrations on deploy: `alembic upgrade head`
 | `COOKIE_SECURE` / `COOKIE_SAMESITE` | Cross-origin refresh cookie (Vercel + Render) |
 
 See `Backend/.env.example` and `Frontend/.env.example` for the full list.
-
----
-
-## License
-
-MIT
