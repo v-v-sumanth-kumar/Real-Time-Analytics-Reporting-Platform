@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from uuid import UUID
 
@@ -19,20 +21,6 @@ class MessageResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-
-
-class AuthResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: "UserResponse"
-    organization: "OrganizationResponse | None" = None
-    role: str | None = None
-
-
-class MeResponse(BaseModel):
-    user: UserResponse
-    organization: OrganizationResponse | None = None
-    role: str | None = None
 
 
 class UserResponse(ORMBase):
@@ -60,5 +48,15 @@ class MemberResponse(ORMBase):
     full_name: str | None = None
 
 
-MeResponse.model_rebuild()
-AuthResponse.model_rebuild()
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+    organization: OrganizationResponse | None = None
+    role: str | None = None
+
+
+class MeResponse(BaseModel):
+    user: UserResponse
+    organization: OrganizationResponse | None = None
+    role: str | None = None
