@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     WidgetResponse,
     WidgetUpdate,
 )
+from app.utils.frontend_url import resolve_frontend_base_url
 from app.utils.pagination import PaginatedResult, PaginationParams
 from app.utils.widgets import filter_active_widgets
 

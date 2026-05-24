@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import { resolveInviteLink } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,14 @@ export default function TeamPage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function copyInviteLink() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["members"],
@@ -35,10 +44,7 @@ export default function TeamPage() {
       ),
     onSuccess: (res) => {
       if (res.success) {
-        const link = res.data.invite_link.startsWith("http")
-          ? res.data.invite_link
-          : `${window.location.origin}${res.data.invite_link}`;
-        setInviteLink(link);
+        setInviteLink(resolveInviteLink(res.data.invite_link));
         setEmail("");
       }
     },
@@ -80,8 +86,19 @@ export default function TeamPage() {
         </CardContent>
         {inviteLink && (
           <CardContent className="border-t border-border pt-4">
-            <p className="text-sm text-muted-foreground">Share this invite link:</p>
+            <p className="text-sm text-muted-foreground">
+              Share this link with the invitee (must be a URL they can open in a browser):
+            </p>
             <code className="mt-2 block break-all rounded bg-muted p-3 text-sm">{inviteLink}</code>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => copyInviteLink()}>
+              {copied ? "Copied!" : "Copy link"}
+            </Button>
+            {inviteLink.includes("localhost") && (
+              <p className="mt-3 text-xs text-amber-400">
+                This link only works on your machine. Deploy the frontend and set FRONTEND_URL on the
+                backend (and NEXT_PUBLIC_APP_URL on the frontend) to your public URL.
+              </p>
+            )}
           </CardContent>
         )}
       </Card>

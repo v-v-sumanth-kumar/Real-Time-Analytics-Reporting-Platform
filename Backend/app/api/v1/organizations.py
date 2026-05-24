@@ -3,7 +3,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.deps import (
     get_current_organization,
     get_current_user,
@@ -19,6 +18,7 @@ from app.schemas.auth import InviteAcceptRequest, InviteCreateRequest
 from app.schemas.common import MemberResponse, OrganizationResponse
 from app.services.auth_service import AuthService
 from app.services.invitation_service import InvitationService
+from app.utils.frontend_url import resolve_frontend_base_url
 from app.utils.response import success_response
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
@@ -74,8 +74,8 @@ async def invite_user(
         body.role_enum(),
         user.id,
     )
-    settings = get_settings()
-    info["invite_link"] = f"{settings.frontend_url.rstrip('/')}/accept-invite?token={token}"
+    base = resolve_frontend_base_url(request)
+    info["invite_link"] = f"{base}/accept-invite?token={token}"
     return success_response(info, correlation_id=getattr(request.state, "correlation_id", None))
 
 
