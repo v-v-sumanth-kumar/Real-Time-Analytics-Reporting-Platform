@@ -109,13 +109,14 @@ class IngestionService:
         org_id = payloads[0]["organization_id"]
         stream_events = [
             {
-                "event_name": p["event_name"],
-                "occurred_at": p["occurred_at"],
-                "properties": p.get("properties", {}),
-                "user_id": p.get("user_id"),
-                "source": p.get("source", "api"),
+                "id": str(e.id),
+                "event_name": e.event_name,
+                "occurred_at": e.occurred_at.isoformat(),
+                "properties": e.properties or {},
+                "user_id": e.user_id,
+                "source": e.source,
             }
-            for p in payloads[:50]
+            for e in events[:50]
         ]
         await self.redis.publish(
             f"org:{org_id}:events",

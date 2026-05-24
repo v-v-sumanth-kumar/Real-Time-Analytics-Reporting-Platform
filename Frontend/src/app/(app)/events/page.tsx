@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { analyticsWs } from "@/lib/ws";
+import { useAuthStore } from "@/stores/auth-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,36 +19,33 @@ type StreamEvent = {
 
 export default function EventsStreamPage() {
   const queryClient = useQueryClient();
-  const [liveEvents, setLiveEvents] = useState<StreamEvent[]>([]);
+  const orgId = useAuthStore((s) => s.organization?.id);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["events-stream"],
+    queryKey: ["events-stream", orgId],
     queryFn: () => apiFetch<StreamEvent[]>("/api/v1/events/stream?page=1&page_size=50"),
-    refetchInterval: 30000,
+    enabled: !!orgId,
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
+    if (!orgId) return;
+
     analyticsWs.connect();
     const unsub = analyticsWs.subscribe((msg) => {
       if (msg.type === "event.ingested") {
-        const payload = msg.payload as { events?: StreamEvent[] };
-        if (payload?.events?.length) {
-          setLiveEvents((prev) => [...payload.events!, ...prev].slice(0, 100));
-        }
-        queryClient.invalidateQueries({ queryKey: ["events-stream"] });
+        queryClient.invalidateQueries({ queryKey: ["events-stream", orgId] });
       }
     });
+
     return () => {
       unsub();
       analyticsWs.disconnect();
     };
-  }, [queryClient]);
+  }, [orgId, queryClient]);
 
-  const historical = data?.success ? data.data : [];
-  const merged = [...liveEvents, ...historical.filter((h) => !liveEvents.some((l) => l.id === h.id))].slice(
-    0,
-    100
-  );
+  const events = data?.success ? data.data : [];
 
   return (
     <div className="p-8">
@@ -64,7 +62,7 @@ export default function EventsStreamPage() {
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-64" />
-          ) : merged.length === 0 ? (
+          ) : events.length === 0 ? (
             <p className="text-sm text-muted-foreground">No events yet. Ingest events via API or CSV.</p>
           ) : (
             <div className="max-h-[600px] overflow-auto">
@@ -78,8 +76,8 @@ export default function EventsStreamPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {merged.map((e, i) => (
-                    <tr key={e.id || `${e.event_name}-${e.occurred_at}-${i}`} className="border-b border-border/50">
+                  {events.map((e) => (
+                    <tr key={e.id || `${e.event_name}-${e.occurred_at}`} className="border-b border-border/50">
                       <td className="py-2 pr-4 whitespace-nowrap">
                         {new Date(e.occurred_at).toLocaleString()}
                       </td>

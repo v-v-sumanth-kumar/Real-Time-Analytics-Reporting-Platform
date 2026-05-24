@@ -117,12 +117,14 @@ async def _process_csv_queue() -> int:
                         "count": count,
                         "events": [
                             {
-                                "event_name": p["event_name"],
-                                "occurred_at": p["occurred_at"],
-                                "properties": p.get("properties", {}),
-                                "source": "csv",
+                                "id": str(e.id),
+                                "event_name": e.event_name,
+                                "occurred_at": e.occurred_at.isoformat(),
+                                "properties": e.properties or {},
+                                "user_id": e.user_id,
+                                "source": e.source,
                             }
-                            for p in payloads[:50]
+                            for e in events[:50]
                         ],
                     }),
                 )

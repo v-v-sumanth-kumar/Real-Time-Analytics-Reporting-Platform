@@ -1,22 +1,42 @@
 import { getAccessToken, getOrganizationId } from "./api";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+function resolveWsUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_WS_URL?.trim();
+  if (explicit) return explicit;
+  const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  return api.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+}
 
 type MessageHandler = (data: Record<string, unknown>) => void;
 
 export class AnalyticsWebSocket {
   private ws: WebSocket | null = null;
   private handlers: Set<MessageHandler> = new Set();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private dashboardId: string | undefined;
 
   connect(dashboardId?: string) {
+    this.dashboardId = dashboardId;
     const token = getAccessToken();
     const orgId = getOrganizationId();
-    if (!token || !orgId) return;
+    if (!token || !orgId) {
+      this.scheduleReconnect();
+      return;
+    }
+
+    if (this.ws?.readyState === WebSocket.OPEN) return;
 
     const params = new URLSearchParams({ token, org_id: orgId });
     if (dashboardId) params.set("dashboard_id", dashboardId);
 
-    this.ws = new WebSocket(`${WS_URL}/ws?${params.toString()}`);
+    this.ws = new WebSocket(`${resolveWsUrl()}/ws?${params.toString()}`);
+
+    this.ws.onopen = () => {
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+    };
 
     this.ws.onmessage = (event) => {
       try {
@@ -28,8 +48,17 @@ export class AnalyticsWebSocket {
     };
 
     this.ws.onclose = () => {
-      setTimeout(() => this.connect(dashboardId), 3000);
+      this.ws = null;
+      this.scheduleReconnect();
     };
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect(this.dashboardId);
+    }, 3000);
   }
 
   subscribe(handler: MessageHandler) {
@@ -38,6 +67,10 @@ export class AnalyticsWebSocket {
   }
 
   disconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
   }
