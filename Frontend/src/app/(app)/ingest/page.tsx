@@ -17,6 +17,8 @@ type IngestResult = {
 export default function IngestPage() {
   const [apiKey, setApiKey] = useState("");
   const [apiKeyResult, setApiKeyResult] = useState("");
+  const [apiKeyError, setApiKeyError] = useState("");
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvResult, setCsvResult] = useState("");
   const [csvError, setCsvError] = useState("");
@@ -24,20 +26,32 @@ export default function IngestPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function sendTestEvent() {
+    setApiKeyLoading(true);
     setApiKeyResult("");
-    const res = await fetch(`${API_URL}/api/v1/events`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
-      body: JSON.stringify({
-        event_name: "page_view",
-        properties: { page: "/home", source: "test" },
-      }),
-    });
-    const json = await res.json();
-    setApiKeyResult(JSON.stringify(json, null, 2));
+    setApiKeyError("");
+    try {
+      const res = await fetch(`${API_URL}/api/v1/events`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+        },
+        body: JSON.stringify({
+          event_name: "page_view",
+          properties: { page: "/home", source: "test" },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setApiKeyError(json.error?.message || `Request failed (${res.status})`);
+        return;
+      }
+      setApiKeyResult(JSON.stringify(json, null, 2));
+    } catch (e) {
+      setApiKeyError(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setApiKeyLoading(false);
+    }
   }
 
   async function uploadCsv() {
@@ -74,6 +88,13 @@ export default function IngestPage() {
             <CardTitle className="text-base">Test ingest (API key)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Sends a fixed test payload ({`{"event_name":"page_view", ...}`}). The API returns{" "}
+              <strong>202 Accepted</strong> after queuing — it does not write to the database
+              immediately. A Celery worker must drain the queue (usually within ~5 seconds).
+              Events are stored under the <strong>API key&apos;s organization</strong>; check Live
+              Events while logged into that same org.
+            </p>
             <div className="space-y-2">
               <Label htmlFor="api-key">X-API-Key</Label>
               <Input
@@ -83,9 +104,10 @@ export default function IngestPage() {
                 onChange={(e) => setApiKey(e.target.value)}
               />
             </div>
-            <Button onClick={sendTestEvent} disabled={!apiKey}>
-              Send test event
+            <Button onClick={sendTestEvent} disabled={!apiKey || apiKeyLoading}>
+              {apiKeyLoading ? "Sending..." : "Send test event"}
             </Button>
+            {apiKeyError && <p className="text-sm text-red-500">{apiKeyError}</p>}
             {apiKeyResult && (
               <pre className="overflow-auto rounded bg-muted p-4 text-xs">{apiKeyResult}</pre>
             )}

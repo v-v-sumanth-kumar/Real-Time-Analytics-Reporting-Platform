@@ -27,6 +27,8 @@ async def health_check():
         redis = await get_redis()
         await redis.ping()
         checks["redis"] = "ok"
+        checks["ingest_queue_depth"] = await redis.llen("ingest:events")
+        checks["csv_queue_depth"] = await redis.llen("ingest:csv")
     except Exception as e:
         checks["redis"] = f"error: {e}"
         http_status = status.HTTP_503_SERVICE_UNAVAILABLE
